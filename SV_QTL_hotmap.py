@@ -7,14 +7,46 @@ Created on Tue Oct  4 14:51:04 2022
 
 import pandas as pd
 import numpy as np
+import re
 ############分析sheep
 path_sheep_QTL = r'C:\Users\h\Desktop\random\QTL\sheep\sheep-ram1.0-QTLdb-less5Mb.bed'
 sheep_QTL = pd.read_csv(path_sheep_QTL,sep='\t',header=None)
+
+
+
+
+
 QTLposition = sheep_QTL.iloc[:,0:4]
 QTLposition.columns = ['Chr','s','t','qtl']
+
+
+
+
 #导入来自师兄的overlapped文件
+sheep_SV_QTL_all = pd.read_csv(r'F:\svdata\sheep_SV_in_QTL.bed',sep='\t',header=None)
+sheep_SV_QTL_all = sheep_SV_QTL_all[[0,1,2,3,4,5,11]]
 path_SV_QTL = r'C:\Users\h\Desktop\random\QTL\sheep\sheep-532-withoutTRA-SV-overlapped-with-less5MbQTL.txt'
+
+
+
+
 SV_QTL = pd.read_csv(path_SV_QTL,sep='\t',header=None)
+
+
+
+def extract_data(s, start, end):
+    pattern = re.compile(r'{}(.*?){}'.format(re.escape(start), re.escape(end)))
+    matches = pattern.findall(s)
+    return matches[0] if matches else None
+
+sheep_SV_QTL_all['END2'] = sheep_SV_QTL_all[11].apply(lambda x: extract_data(x, 'END=', ';'))
+sheep_SV_QTL_all[[4,5,"END2"]]
+
+all_qtl_SV = sheep_SV_QTL_all[[4,5,"END2"]].drop_duplicates()
+
+VCF = pd.merge(all_qtl_SV, sheep_532_plink_0110, on=['#CHROM', 'POS'])
+VCF = VCF.iloc[VCF.iloc[:,:3].drop_duplicates().index]
+#SV_QTL = pd.read_csv(r'F:\svdata\',sep='\t',header=None)
 SV_QTL.columns = ['#CHROM','POS','t','d','e','f','g','QTL_name']
 #导入QTL文件
 QTL_path = r'C:\Users\h\Desktop\random\QTL\sheep\QTL.xlsx'
@@ -30,7 +62,16 @@ SV_QTL.columns = ['#CHROM','POS','t','d','e','f','g','QTL_name']
 #pd.merge(SV_QTL,VCF,on=['POS','#CHROM']).to_excel(r'C:\Users\h\Desktop\random\QTL\sheep\all_QTL_VCF.xlsx')
 #保存重新读取融合QTL_VCF文件
 all_QTL_VCF = pd.read_excel(r'C:\Users\h\Desktop\random\QTL\sheep\all_QTL_VCF.xlsx')
+#####################################
+selected_columns = all_QTL_VCF.iloc[:, 5:-1]
+selected_columns = selected_columns.applymap(lambda x: x[:3] if isinstance(x, str) else x)
+all_QTL_VCF.iloc[:,5:-1] = selected_columns
+all_QTL_VCF.to_excel(r'F:\svdata\all_QTL_VCF_0516.xlsx')
 
+all_QTL_VCF = pd.read_excel(r'F:\svdata\all_QTL_VCF_0516.xlsx')
+all_QTL_VCF.ID = sheep_SV_QTL_all.iloc[:,6]
+all_QTL_VCF = all_QTL_VCF.iloc[:,1:]
+#####################################
 QTL_name_merge = all_QTL_VCF.QTL_name.str.split('QTL')
 for i in range(len(QTL_name_merge)):
     all_QTL_VCF.iloc[i,6] = QTL_name_merge[i][0] + 'QTL'
@@ -43,6 +84,7 @@ n_data = pd.DataFrame(np.zeros((147,533)),columns = all_QTL_VCF.columns[7:])
 n_data['ID'] = plot_name
 #一共交集到了QTL的SV数目是2214 
 SV_QTL_count = all_QTL_VCF.POS_s.drop_duplicates()
+
 
 #计算df文件中一共存在多少个不同种类的基因型
 def count_genotype(name,df):
@@ -93,10 +135,11 @@ for i in range(len(n_data)):
     
 #保存
 n_data.to_excel(r'C:\Users\h\Desktop\result_fold_enrichment.xlsx')
-
+#n_data.to_excel(r'C:\Users\h\Desktop\GB图片修改\result_fold_enrichment.xlsx')
 n_data = pd.read_excel(r'C:\Users\h\Desktop\result_fold_enrichment.xlsx')
+#n_data.to_excel(r'C:\Users\h\Desktop\GB图片修改\result_fold_enrichment.xlsx')
 #建立一个对QTL进行分类的dict，用于*纵轴分类
-x_path = r'C:\Users\h\Desktop\QLT_count_sort.xlsx'
+x_path = r'C:\Users\h\Desktop\workdata\QLT_count_sort.xlsx'
 x = pd.read_excel(x_path,header=None)
 x = x.iloc[:,:5]
 x.columns = ['Chr','cluster','s','t','name']
@@ -116,18 +159,33 @@ for i in range(len(n_data)):
 id1 = n_data['ID']
 
 #成功对列QTL进行了分类，保存
-data = pd.read_excel(r'C:\Users\h\Desktop\result_fold_enrichment_QTLcluster.xlsx').iloc[:,1:]
+n_data
+data = pd.read_excel(r'C:\Users\h\Desktop\workdata\result_fold_enrichment_QTLcluster.xlsx').iloc[:,1:]
+data = pd.read_excel(r'C:\Users\h\Desktop\GB图片修改\result_fold_enrichment_QTLcluster.xlsx')
 for i in range(len(id1.str.split('_'))):
     n_data.iloc[i,0] = ' '.join(id1.str.split('_')[i][:-1])
+    
+# 选取所有列的第1列到倒数第2列
+selected_columns = n_data.iloc[:, 1:-1]
+
+# 将所有值转换为浮点数
+selected_columns = selected_columns.apply(pd.to_numeric, errors='coerce')
+
+# 使用 np.log2 处理数据框，忽略缺失值
+log2_transformed = selected_columns.applymap(lambda x: np.log2(x) if pd.notnull(x) else np.nan)
+    
 #对所有fold-enrichment值取log2
-n_data.iloc[:,1:-1] = np.log2(n_data.iloc[:,1:-1])
+n_data.iloc[:,1:-1] = log2_transformed
 #所有Nan的值都用该表格的最小值进行填充
 n_data.iloc[:,1:-1] = n_data.iloc[:,1:-1].fillna(n_data.iloc[:,1:-1].min().min())
+n_data = pd.read_excel(r'C:\Users\h\Desktop\GB图片修改\result_fold_enrichment_QTLcluster_result.xlsx')
 #保存
 n_data.to_excel(r'C:\Users\h\Desktop\result_fold_enrichment_QTLcluster_result.xlsx')
+#n_data.to_excel(r'C:\Users\h\Desktop\GB图片修改\result_fold_enrichment_QTLcluster_result.xlsx')
 n_data.to_csv(r'C:\Users\h\Desktop\result_fold_enrichment_QTLcluster_result.csv',index=None,sep=' ')
 #按照QTL的类别对纵轴进行排列，导出。
 n_data.sort_values(by='ID').to_csv(r'C:\Users\h\Desktop\result_fold_sort.csv',sep=' ',index=None)
+#n_data.sort_values(by='ID').to_csv(r'C:\Users\h\Desktop\GB图片修改\result_fold_sort.csv',sep=' ',index=None)
 result_data = n_data.sort_values(by='ID')
 x = result_data
 oldindex = x.index
@@ -166,7 +224,7 @@ df[1] = df.index
 df.columns = ['a','b']
 df = df.astype(str)
 select_name = select_name.astype(str)
-merge = pd.merge(select_name,df,on=1)
+merge = pd.merge(select_name,df,on='b')
 #单独导出分类文件
 merge.to_csv(r'C:\Users\h\Desktop\name_columns.csv',sep=' ')
 
@@ -178,8 +236,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot
 data_path = r'C:\Users\h\Desktop\result_fold_enrichment.xlsx'
-
-data = pd.read_excel(data_path).iloc[:,1:]
+data_path = r'C:\Users\h\Desktop\GB图片修改\result_fold_enrichment_QTLcluster_result.xlsx'
+data = pd.read_excel(data_path).iloc[:,1:-1]
 pyplot.figure(figsize=(15, 15))
 plot=sns.heatmap(data)
 
@@ -240,7 +298,7 @@ for i in range(len(QTL_name_merge)):
 #计算一下一共有多少个QTL，也就是画图文件的列
 x = all_QTL_VCF.iloc[:,6]
 plot = pd.DataFrame(x.drop_duplicates())
-plot_name = plot.reset_index()['ID']
+plot_name = plot.reset_index()['QTL_name']
 n_data = pd.DataFrame(np.zeros((len(plot),len(all_QTL_VCF.iloc[:,6:].columns))),columns=all_QTL_VCF.columns[6:])
 n_data['ID'] = plot_name
 #一共交集到了QTL的SV数目是342 
@@ -280,12 +338,13 @@ for i in range(len(n_data)):
         fold_enrichment = select/Bg
         n_data.iloc[i,j] = fold_enrichment    
 #n_data.to_excel(r'C:\Users\h\Desktop\random\QTL\goat\result_fold_enrichment.xlsx')   
+#n_data.to_excel(r'F:\svdata\result_fold_enrichment_0516.xlsx')   
 #n_data = pd.read_excel(r'C:\Users\h\Desktop\random\QTL\goat\result_fold_enrichment.xlsx')
 #n_data = pd.read_excel(r'F:\svdata\result_fold_enrichment_20240117.xlsx')
-n_data = n_data.iloc[:,1:]
-n_data.iloc[:,2:] = np.log2(n_data.iloc[:,1:])
+n_data = n_data.iloc[:,:]
+n_data.iloc[:,2:] = np.log2(n_data.iloc[:,2:])
 #所有Nan的值都用该表格的最小值进行填充
-n_data.iloc[:,2:] = n_data.iloc[:,1:].fillna(n_data.iloc[:,1:].min().min())
+n_data.iloc[:,2:] = n_data.iloc[:,2:].fillna(n_data.iloc[:,2:].min().min())
 #保存
 
 n_data.to_excel(r'C:\Users\h\Desktop\random\QTL\goat\result_fold_enrichment_log2_fillna.xlsx')   
@@ -331,6 +390,7 @@ name_281.columns = ['Sample ID']
 
 
 
+n_data
 
 
 
